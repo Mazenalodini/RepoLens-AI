@@ -55,3 +55,11 @@ class AIProviderError(RepoLensError):
 
 class ReportError(RepoLensError):
     """Report generation failed."""
+
+
+class ConcurrencyLimitError(RepoLensError):
+    """Maximum concurrent analyses exceeded."""
+
+
+class RepositorySizeError(RepoLensError):
+    """Repository exceeds configured size limit."""
