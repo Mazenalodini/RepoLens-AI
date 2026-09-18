@@ -31,3 +31,11 @@ class WorkspaceError(RepoLensError):
 
 class PathTraversalError(WorkspaceError):
     """Attempted path traversal outside workspace boundary."""
+
+
+class DiscoveryError(RepoLensError):
+    """Repository discovery failed."""
+
+
+class DiscoveryLimitExceededError(DiscoveryError):
+    """Discovery exceeded configured resource limits (e.g., max files/depth)."""
