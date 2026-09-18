@@ -56,7 +56,7 @@ temp/
 *.tmp
 
 # ===== Generated Artifacts =====
-output/
-reports/
+/output/
+/reports/
 *.html
 !src/**/*.html

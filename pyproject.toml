@@ -21,6 +21,9 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Quality Assurance",
 ]
+dependencies = [
+    "google-genai>=2.24.0,<3.0.0",
+]
 
 [project.optional-dependencies]
 dev = [

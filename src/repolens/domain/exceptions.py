@@ -47,3 +47,11 @@ class AnalyzerError(RepoLensError):
 
 class PipelineError(RepoLensError):
     """Raised when the analyzer pipeline fails."""
+
+
+class AIProviderError(RepoLensError):
+    """AI provider call failed."""
+
+
+class ReportError(RepoLensError):
+    """Report generation failed."""
