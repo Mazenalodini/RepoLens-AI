@@ -23,12 +23,18 @@ classifiers = [
 ]
 dependencies = [
     "google-genai>=2.24.0,<3.0.0",
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.30.0,<1.0.0",
+    "sqlalchemy>=2.0.0,<3.0.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.21.0",
     "ruff>=0.8",
+    "httpx2",
 ]
 
 [tool.setuptools.packages.find]
@@ -39,6 +45,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette\\.testclient` is deprecated:DeprecationWarning",
+    "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning",
+    "ignore:.*on_event is deprecated.*:DeprecationWarning",
+]
 
 # --- ruff ---
 
@@ -48,6 +59,7 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
+ignore = ["B008", "E501"]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings

@@ -60,3 +60,8 @@ temp/
 /reports/
 *.html
 !src/**/*.html
+
+# ===== Database =====
+*.db
+*.sqlite
+repolens.db
