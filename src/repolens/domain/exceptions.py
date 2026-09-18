@@ -39,3 +39,11 @@ class DiscoveryError(RepoLensError):
 
 class DiscoveryLimitExceededError(DiscoveryError):
     """Discovery exceeded configured resource limits (e.g., max files/depth)."""
+
+
+class AnalyzerError(RepoLensError):
+    """Raised when a specific analyzer fails."""
+
+
+class PipelineError(RepoLensError):
+    """Raised when the analyzer pipeline fails."""
