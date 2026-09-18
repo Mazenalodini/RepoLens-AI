@@ -8,7 +8,11 @@ without knowing how the repository was acquired.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import stat
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -16,6 +20,26 @@ from typing import Protocol
 from repolens.domain.exceptions import PathTraversalError, WorkspaceError
 
 logger = logging.getLogger(__name__)
+
+_MAX_CLEANUP_RETRIES: int = 3
+_CLEANUP_RETRY_DELAY: float = 0.1  # seconds, multiplied by attempt number
+
+
+def _handle_readonly_error(
+    func: Callable[..., object],
+    path: str,
+    exc: BaseException,
+) -> None:
+    """Remove read-only attribute and retry deletion.
+
+    On Windows, Git marks pack files (.idx, .pack) as read-only.
+    This handler clears the read-only flag so rmtree can proceed.
+    """
+    if isinstance(exc, PermissionError):
+        os.chmod(path, stat.S_IWUSR | stat.S_IRUSR)
+        func(path)
+    else:
+        raise exc
 
 
 @dataclass(frozen=True)
@@ -124,24 +148,47 @@ class RepositoryWorkspace:
     def cleanup(self) -> None:
         """Remove the workspace directory.
 
-        Safe to call multiple times. Logs warnings on cleanup failures
-        but does not raise exceptions.
-        """
-        if self._closed:
-            return
+        Sets the workspace to closed immediately (blocking further path
+        operations), then attempts filesystem cleanup with retry.
 
+        Handles Windows-specific issues:
+        - Read-only files (Git pack files) via permission reset.
+        - Transient file locks via bounded retry with backoff.
+
+        Safe to call multiple times. If a previous attempt failed and
+        the temp directory still exists, cleanup is re-attempted.
+        Does not raise exceptions.
+        """
         self._closed = True
 
-        if self._temp_dir and self._temp_dir.exists():
+        if self._temp_dir is None or not self._temp_dir.exists():
+            return
+
+        last_error: OSError | None = None
+        for attempt in range(1, _MAX_CLEANUP_RETRIES + 1):
             try:
-                shutil.rmtree(self._temp_dir)
+                shutil.rmtree(self._temp_dir, onexc=_handle_readonly_error)
                 logger.debug("Cleaned up workspace: %s", self._temp_dir)
-            except OSError:
-                logger.warning(
-                    "Failed to clean up workspace: %s",
-                    self._temp_dir,
-                    exc_info=True,
-                )
+                return
+            except OSError as exc:
+                last_error = exc
+                if attempt < _MAX_CLEANUP_RETRIES:
+                    delay = _CLEANUP_RETRY_DELAY * attempt
+                    logger.debug(
+                        "Cleanup attempt %d/%d failed, retrying in %.1fs: %s",
+                        attempt,
+                        _MAX_CLEANUP_RETRIES,
+                        delay,
+                        exc,
+                    )
+                    time.sleep(delay)
+
+        logger.warning(
+            "Failed to clean up workspace after %d attempts: %s (%s)",
+            _MAX_CLEANUP_RETRIES,
+            self._temp_dir,
+            last_error,
+        )
 
     def __enter__(self) -> RepositoryWorkspace:
         return self
