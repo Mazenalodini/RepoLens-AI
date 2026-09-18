@@ -115,9 +115,10 @@ class TestFullRoundTrip:
             f"/api/v1/analyses/{analysis_id}/report?format=html"
         )
         assert report_resp.status_code == 200
-        report_data = report_resp.json()
-        assert report_data["format"] == "html"
-        assert len(report_data["content"]) > 0
+        assert report_resp.headers["content-type"].startswith("text/html")
+        report_data = report_resp.text
+        assert len(report_data) > 0
+        assert "<html" in report_data.lower() or "<!doctype" in report_data.lower()
 
         # Step 5: GET report (JSON)
         json_resp = client.get(

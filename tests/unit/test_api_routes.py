@@ -202,9 +202,9 @@ class TestGetReport:
 
         resp = client.get(f"/api/v1/analyses/{analysis_id}/report?format=html")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["format"] == "html"
-        assert "<html" in data["content"].lower() or "<!doctype" in data["content"].lower()
+        assert resp.headers["content-type"].startswith("text/html")
+        content = resp.text
+        assert "<html" in content.lower() or "<!doctype" in content.lower()
 
     def test_json_report(self, client: TestClient) -> None:
         create_resp = client.post(
@@ -218,6 +218,29 @@ class TestGetReport:
 
         resp = client.get(f"/api/v1/analyses/{analysis_id}/report?format=json")
         assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/json")
+        data = resp.json()
+        assert data["format"] == "json"
+        assert "content" in data
+        assert isinstance(data["content"], str)
+
+    def test_markdown_report(self, client: TestClient) -> None:
+        create_resp = client.post(
+            "/api/v1/analyses",
+            json={
+                "repository_url": "https://github.com/test-owner/test-repo",
+                "include_ai_review": False,
+            },
+        )
+        analysis_id = create_resp.json()["analysis_id"]
+
+        resp = client.get(f"/api/v1/analyses/{analysis_id}/report?format=markdown")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/json")
+        data = resp.json()
+        assert data["format"] == "markdown"
+        assert "content" in data
+        assert isinstance(data["content"], str)
 
     def test_invalid_format(self, client: TestClient) -> None:
         create_resp = client.post(

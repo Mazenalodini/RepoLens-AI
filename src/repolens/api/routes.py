@@ -8,6 +8,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
 
 from repolens.api.dependencies import get_analysis_service
 from repolens.api.schemas import (
@@ -143,14 +144,14 @@ async def get_findings(
 
 @router.get(
     "/analyses/{analysis_id}/report",
-    response_model=ReportResponse,
+    response_model=None,
     responses={404: {"model": ErrorResponse}},
 )
 async def get_report(
     analysis_id: str,
     format: str = "html",
     service: AnalysisService = Depends(get_analysis_service),
-) -> ReportResponse:
+) -> ReportResponse | HTMLResponse:
     """Get a report for an analysis."""
     record = service.get_analysis(analysis_id)
     if record is None:
@@ -172,8 +173,11 @@ async def get_report(
     if content is None:
         raise ValidationError(f"Report in '{format}' format not available.")
 
+    if format == "html":
+        return HTMLResponse(content=content)
+
     repo_name = f"{record.repository_owner}_{record.repository_name}"
-    ext_map = {"html": "html", "json": "json", "markdown": "md"}
+    ext_map = {"json": "json", "markdown": "md"}
 
     return ReportResponse(
         analysis_id=analysis_id,
