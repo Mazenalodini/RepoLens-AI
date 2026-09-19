@@ -121,6 +121,43 @@ def test_successful_review(mock_genai_client, clean_env) -> None:
     assert "Evidence 1" in call_kwargs["contents"]
 
 
+def test_timeout_is_converted_to_milliseconds(mock_genai_client, clean_env) -> None:
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({"executive_summary": "Test", "overall_assessment": "Test"})
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_response
+    mock_genai_client.return_value = mock_client
+
+    provider = GoogleAIProvider(api_key="test-key", timeout=42.5)
+    provider.review(_make_context())
+
+    mock_client.models.generate_content.assert_called_once()
+
+    import sys
+    mock_genai = sys.modules["google.genai"]
+    mock_genai.types.HttpOptions.assert_called_once_with(timeout=42500)
+
+
+def test_timeout_validation_rejects_zero() -> None:
+    with pytest.raises(ValueError, match="Timeout must be a finite positive number"):
+        GoogleAIProvider(api_key="test-key", timeout=0)
+
+
+def test_timeout_validation_rejects_negative() -> None:
+    with pytest.raises(ValueError, match="Timeout must be a finite positive number"):
+        GoogleAIProvider(api_key="test-key", timeout=-1.5)
+
+
+def test_timeout_validation_rejects_nan() -> None:
+    with pytest.raises(ValueError, match="Timeout must be a finite positive number"):
+        GoogleAIProvider(api_key="test-key", timeout=float("nan"))
+
+
+def test_timeout_validation_rejects_inf() -> None:
+    with pytest.raises(ValueError, match="Timeout must be a finite positive number"):
+        GoogleAIProvider(api_key="test-key", timeout=float("inf"))
+
+
 def test_removes_markdown_fences(mock_genai_client, clean_env) -> None:
     mock_response = MagicMock()
     mock_response.text = "```json\n" + json.dumps({
@@ -149,6 +186,17 @@ def test_handles_api_failure(mock_genai_client, clean_env) -> None:
     provider = GoogleAIProvider(api_key="test-key")
 
     with pytest.raises(AIProviderError, match="API call failed: API down"):
+        provider.review(_make_context())
+
+
+def test_handles_timeout(mock_genai_client, clean_env) -> None:
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = Exception("Timeout")
+    mock_genai_client.return_value = mock_client
+
+    provider = GoogleAIProvider(api_key="test-key", timeout=1.0)
+
+    with pytest.raises(AIProviderError, match="API call failed: Timeout"):
         provider.review(_make_context())
 
 

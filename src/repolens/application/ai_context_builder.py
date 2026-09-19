@@ -19,6 +19,18 @@ logger = logging.getLogger(__name__)
 # to prevent prompt overflow.
 _MAX_EVIDENCE_ITEMS = 50
 _MAX_FINDING_ITEMS = 50
+_MAX_METADATA_LENGTH = 128
+
+
+def _sanitize_metadata(value: str | None) -> str | None:
+    """Sanitize repository-derived metadata.
+
+    Strips CR/LF to prevent delimiter breakout and truncates
+    to prevent prompt flooding.
+    """
+    if value is None:
+        return None
+    return value.replace("\n", " ").replace("\r", " ")[:_MAX_METADATA_LENGTH]
 
 
 class AIContextBuilder:
@@ -74,12 +86,12 @@ class AIContextBuilder:
             classification_summary=classification_summary,
             evidence_summary=evidence_summary,
             findings_summary=findings_summary,
-            project_metadata_name=(
+            project_metadata_name=_sanitize_metadata(
                 snapshot.project_metadata.name
                 if snapshot.project_metadata
                 else None
             ),
-            project_metadata_version=(
+            project_metadata_version=_sanitize_metadata(
                 snapshot.project_metadata.version
                 if snapshot.project_metadata
                 else None
