@@ -21,18 +21,64 @@ logger = logging.getLogger(__name__)
 
 
 def _create_ai_provider() -> AIProvider | None:
-    """Create an AI provider if an API key is configured."""
-    api_key = os.environ.get("REPOLENS_AI_API_KEY")
-    if not api_key:
-        logger.info("REPOLENS_AI_API_KEY not set — AI review disabled.")
-        return None
+    """Create an AI provider based on configuration."""
+    provider_type = os.environ.get("REPOLENS_AI_PROVIDER", "").strip().lower()
+    google_key = os.environ.get("REPOLENS_AI_API_KEY")
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
 
+    if provider_type:
+        if provider_type == "google":
+            if not google_key:
+                logger.error("REPOLENS_AI_PROVIDER=google but REPOLENS_AI_API_KEY is not set.")
+                return None
+            return _init_google_provider(google_key)
+        elif provider_type == "openrouter":
+            if not openrouter_key:
+                logger.error("REPOLENS_AI_PROVIDER=openrouter but OPENROUTER_API_KEY is not set.")
+                return None
+            return _init_openrouter_provider(openrouter_key)
+        else:
+            logger.error(
+                "Invalid REPOLENS_AI_PROVIDER configuration: '%s'. "
+                "Must be 'google' or 'openrouter'.",
+                provider_type,
+            )
+            return None
+
+    # Auto-detect
+    if google_key:
+        logger.info("Auto-detected Google AI Provider.")
+        return _init_google_provider(google_key)
+
+    if openrouter_key:
+        logger.info("Auto-detected OpenRouter AI Provider.")
+        return _init_openrouter_provider(openrouter_key)
+
+    logger.info("No AI provider configured — AI review disabled.")
+    return None
+
+
+def _init_google_provider(api_key: str) -> AIProvider | None:
     try:
         from repolens.infrastructure.google_ai_provider import GoogleAIProvider
 
-        return GoogleAIProvider(api_key=api_key)
+        provider = GoogleAIProvider(api_key=api_key)
+        logger.info("Activated AI provider: %s", provider.provider_name)
+        return provider
     except Exception:
-        logger.exception("Failed to create AI provider — AI review disabled.")
+        logger.exception("Failed to create Google AI provider — AI review disabled.")
+        return None
+
+
+def _init_openrouter_provider(api_key: str) -> AIProvider | None:
+    try:
+        from repolens.infrastructure.openrouter_ai_provider import OpenRouterAIProvider
+
+        provider = OpenRouterAIProvider(api_key=api_key)
+        logger.info("Activated AI provider: %s", provider.provider_name)
+        return provider
+    except Exception:
+        logger.exception("Failed to create OpenRouter AI provider — AI review disabled.")
         return None
 
 

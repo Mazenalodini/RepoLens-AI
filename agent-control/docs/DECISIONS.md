@@ -146,3 +146,17 @@ Report generation منفصل عن analysis.
 ### السبب
 
 الـMVP يحتاج إلى demonstration قابلة للتشغيل والشرح.
+
+---
+
+## ADR-010 — Multi-provider AI Architecture
+
+**Status:** Accepted
+
+### القرار
+
+دعم أكثر من مزود للذكاء الاصطناعي (مثل Google و OpenRouter) باستخدام `AIProvider` Protocol موحد. يتم اختيار المزود صراحة عبر متغير البيئة `REPOLENS_AI_PROVIDER`.
+
+### السبب
+
+منع vendor lock-in، وتوفير مرونة للمستخدم في اختيار نموذج أو مزود مختلف (مثل OpenRouter)، مع الحفاظ على التوافقية مع المزود الافتراضي (Google). لا يتم استخدام التبديل التلقائي (silent fallback) عند فشل المزود للحفاظ على حتمية وسهولة التنقيح (debuggability).
