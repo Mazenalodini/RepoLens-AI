@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from repolens.api.app import create_app
 from repolens.application.analysis_service import AnalysisService
+from repolens.domain.ai_models import AIContext, AIReview
+from repolens.domain.exceptions import AIProviderError
 from repolens.domain.repository import RepositoryInfo, RepositoryWorkspace
 from repolens.infrastructure.analysis_store import SQLiteAnalysisStore
 from repolens.infrastructure.database import (
@@ -28,6 +30,27 @@ class FakeSource:
 
     def acquire(self, source: str) -> RepositoryWorkspace:
         return self._workspace
+
+
+class FakeAIProvider:
+    def __init__(self, should_fail: bool = False):
+        self.should_fail = should_fail
+
+    @property
+    def provider_name(self) -> str:
+        return "fake-ai"
+
+    def review(self, context: AIContext) -> AIReview:
+        if self.should_fail:
+            raise AIProviderError("Fake AI failure")
+        return AIReview(
+            executive_summary="Fake summary",
+            strengths=("Fake strength",),
+            concerns=("Fake concern",),
+            recommendations=("Fake rec",),
+            overall_assessment="Fake overall",
+            provider_model="fake-model",
+        )
 
 
 @pytest.fixture
@@ -73,6 +96,35 @@ def client(service: AnalysisService) -> TestClient:
     from repolens.api.dependencies import get_analysis_service
 
     app.dependency_overrides[get_analysis_service] = lambda: service
+    with TestClient(app, raise_server_exceptions=False) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def service_with_ai(workspace: RepositoryWorkspace, tmp_path: Path) -> AnalysisService:
+    db_path = tmp_path / "integration_test_ai.db"
+    engine = create_db_engine(f"sqlite:///{db_path}")
+    create_tables(engine)
+    factory = create_session_factory(engine)
+
+    store = SQLiteAnalysisStore(factory)
+    source = FakeSource(workspace)
+
+    return AnalysisService(
+        source=source,
+        store=store,
+        ai_provider=FakeAIProvider(),
+        max_concurrent=2,
+    )
+
+
+@pytest.fixture
+def client_with_ai(service_with_ai: AnalysisService) -> TestClient:
+    app = create_app()
+    from repolens.api.dependencies import get_analysis_service
+
+    app.dependency_overrides[get_analysis_service] = lambda: service_with_ai
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()
@@ -237,3 +289,75 @@ class TestAIDisabled:
         resp = client.get(f"/dashboard/analyses/{analysis_id}")
         assert resp.status_code == 200
         assert "not available" in resp.text.lower()
+
+
+class TestAIIntegration:
+    """Tests that AI integration flow works cleanly."""
+
+    def test_successful_ai_review(self, client_with_ai: TestClient) -> None:
+        # Step 1: Create analysis
+        create_resp = client_with_ai.post(
+            "/api/v1/analyses",
+            json={
+                "repository_url": "https://github.com/integ-owner/integ-repo",
+                "include_ai_review": True,
+            },
+        )
+        assert create_resp.status_code == 200
+        data = create_resp.json()
+        analysis_id = data["analysis_id"]
+        assert data["ai_review_available"] is True
+
+        # Step 2: GET analysis
+        get_resp = client_with_ai.get(f"/api/v1/analyses/{analysis_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["ai_review_available"] is True
+
+        # Step 3: GET report (HTML)
+        report_resp = client_with_ai.get(
+            f"/api/v1/analyses/{analysis_id}/report?format=html"
+        )
+        assert report_resp.status_code == 200
+        assert "Fake summary" in report_resp.text
+        assert "Fake overall" in report_resp.text
+
+    def test_failing_ai_review(self, workspace: RepositoryWorkspace, tmp_path: Path) -> None:
+        db_path = tmp_path / "integration_test_ai_fail.db"
+        engine = create_db_engine(f"sqlite:///{db_path}")
+        create_tables(engine)
+        factory = create_session_factory(engine)
+
+        store = SQLiteAnalysisStore(factory)
+        source = FakeSource(workspace)
+
+        service = AnalysisService(
+            source=source,
+            store=store,
+            ai_provider=FakeAIProvider(should_fail=True),
+            max_concurrent=2,
+        )
+
+        app = create_app()
+        from repolens.api.dependencies import get_analysis_service
+        app.dependency_overrides[get_analysis_service] = lambda: service
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            create_resp = client.post(
+                "/api/v1/analyses",
+                json={
+                    "repository_url": "https://github.com/integ-owner/integ-repo",
+                    "include_ai_review": True,
+                },
+            )
+            assert create_resp.status_code == 200
+            data = create_resp.json()
+            analysis_id = data["analysis_id"]
+            # It should complete normally but report AI as unavailable
+            assert data["ai_review_available"] is False
+
+            # Verify report says unavailable
+            report_resp = client.get(
+                f"/api/v1/analyses/{analysis_id}/report?format=html"
+            )
+            assert report_resp.status_code == 200
+            assert "AI review unavailable: Provider error: Fake AI failure" in report_resp.text

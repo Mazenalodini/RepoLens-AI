@@ -6,6 +6,7 @@ Isolated in Infrastructure — Domain and Application never import this.
 
 import json
 import logging
+import math
 import os
 
 from repolens.domain.ai_models import AIContext, AIReview
@@ -111,6 +112,7 @@ class GoogleAIProvider:
         *,
         api_key: str | None = None,
         model: str | None = None,
+        timeout: float = 60.0,
     ) -> None:
         """Initialize the Google AI provider.
 
@@ -118,6 +120,7 @@ class GoogleAIProvider:
             api_key: API key. Falls back to REPOLENS_AI_API_KEY env var.
             model: Model name. Falls back to REPOLENS_AI_MODEL env var,
                    then to gemini-2.5-flash.
+            timeout: API call timeout in seconds. Will be converted to milliseconds for the SDK.
         """
         self._api_key = api_key or os.environ.get(_ENV_API_KEY, "")
         self._model = (
@@ -125,6 +128,11 @@ class GoogleAIProvider:
             or os.environ.get(_ENV_MODEL, "")
             or _DEFAULT_MODEL
         )
+
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError(f"Timeout must be a finite positive number, got {timeout}")
+
+        self._timeout = timeout
 
         if not self._api_key:
             raise AIProviderError(
@@ -154,12 +162,14 @@ class GoogleAIProvider:
 
         try:
             client = genai.Client(api_key=self._api_key)
+            timeout_ms = int(self._timeout * 1000)
             response = client.models.generate_content(
                 model=self._model,
                 contents=user_prompt,
                 config=genai.types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
                     temperature=0.3,
+                    http_options=genai.types.HttpOptions(timeout=timeout_ms),
                 ),
             )
         except Exception as exc:
